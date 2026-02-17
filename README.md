@@ -6,9 +6,11 @@ Scraper d'annonces immobilières SeLoger avec authentification par cookies et co
 
 ```
 scrap.py                          # Scraper principal (requests + lxml)
+enrich_annonces.py                # Enrichissement des annonces avec détails
 extract_cookies_selenium.py       # Extracteur de cookies (Selenium + Chrome)
 .cookies                          # Cookies au format JSON simple
-annonces.json                     # Résultats de scraping
+annonces.json                     # Résultats de scraping basiques
+annonces_enriched.json            # Résultats enrichis avec tous les détails
 ```
 
 ## Installation
@@ -47,7 +49,8 @@ python3 extract_cookies_selenium.py
 ## Scraping
 
 ```bash
-python3 scrap.py
+python3 scrap.py                  # 1 page (~27 annonces)
+python3 scrap.py --max-pages 5    # 5 pages (~135+ annonces)
 ```
 
 **Filtres par défaut:**
@@ -64,9 +67,18 @@ https://www.seloger.com/list.htm?projects=1&types=1,2&places=[{ci:690123},{ci:69
 
 **Options CLI:**
 ```bash
-python3 scrap.py --url "https://..."  # URL personnalisée
-python3 scrap.py --output results.json
+python3 scrap.py --url "https://..."        # URL personnalisée
+python3 scrap.py --output results.json      # Fichier sortie
+python3 scrap.py --max-pages 10             # Nombre de pages
+python3 scrap.py --max-pages 3 --output appartements_lyon.json
 ```
+
+**Pagination:**
+- SeLoger limite à ~27 annonces par page
+- Paramètre: `&LISTING-LISTpg=2` pour page 2
+- Déduplication automatique par URL
+- Délai 3-5s entre pages (anti-bot)
+- Réindexation des IDs (1, 2, 3...)
 
 ## Techniques anti-bot
 
@@ -86,6 +98,84 @@ Sec-Fetch-Site: same-origin
 4. Délai aléatoire 2-4s entre requêtes
 
 **Session persistante:** Conservation des cookies via `requests.Session()`
+
+## Enrichissement des annonces
+
+Une fois les annonces récupérées avec `scrap.py`, utilisez `enrich_annonces.py` pour obtenir tous les détails:
+
+```bash
+# Enrichir les annonces du fichier annonces.json
+python3 enrich_annonces.py
+
+# Avec options personnalisées
+python3 enrich_annonces.py --input annonces.json --output annonces_enriched.json
+
+# Tester sur les 5 premières annonces
+python3 enrich_annonces.py --limit 5
+```
+
+**Informations ajoutées:**
+- 📍 **GPS**: Latitude et longitude (coordonnées précises)
+- 🏙️ **Localisation nettoyée**: Ville et quartier extraits proprement
+- ⚡ **DPE**: Diagnostic de Performance Énergétique (A-G)
+- 🌍 **GES**: Émissions de Gaz à Effet de Serre (A-G)
+- 🖼️ **Images**: URLs de toutes les photos de l'annonce
+- 📐 **Surface nettoyée**: Extraction numérique (float) de la surface en m²
+- 📅 **Date de récupération**: Timestamp ISO 8601 de l'enrichissement
+- 📅 **Date de publication**: Date de mise en ligne de l'annonce
+
+**Options CLI:**
+```bash
+python3 enrich_annonces.py --input annonces.json        # Fichier d'entrée
+python3 enrich_annonces.py --output enriched.json       # Fichier de sortie
+python3 enrich_annonces.py --cookies .cookies           # Fichier de cookies
+python3 enrich_annonces.py --limit 10                   # Limiter pour tests
+```
+
+**Format de sortie (annonces_enriched.json):**
+```json
+[
+  {
+    "id": 1,
+    "url": "https://www.seloger.com/annonces/locations/...",
+    "title": "Appartement meublé",
+    "price": "500 €",
+    "location": "Lyon 8ème (69008)",
+    "surface": "105 m²",
+    "bedrooms": "3 chambres",
+    "gps_latitude": 45.7640,
+    "gps_longitude": 4.8357,
+    "ville": "Lyon 8ème",
+    "quartier": "Monplaisir",
+    "dpe": "C",
+    "ges": "B",
+    "images": [
+      "https://v.seloger.com/s/crop/590x330/...",
+      "https://v.seloger.com/s/crop/590x330/..."
+    ],
+    "surface_clean": 105.0,
+    "date_recuperation": "2026-02-17T14:30:00",
+    "date_publication": "2026-02-10"
+  }
+]
+```
+
+**Workflow complet:**
+```bash
+# 1. Extraire les cookies (valides < 1h)
+python3 extract_cookies_selenium.py
+
+# 2. Scraper les annonces (données basiques)
+python3 scrap.py --max-pages 5 --output annonces.json
+
+# 3. Enrichir avec détails complets
+python3 enrich_annonces.py --input annonces.json --output annonces_enriched.json
+```
+
+**Performance:**
+- Délai: 2-4s entre chaque annonce (anti-bot)
+- Durée: ~3min pour 50 annonces
+- Statistiques affichées en fin de traitement
 
 ## XPath Selectors (Mis à jour 2026)
 
@@ -156,10 +246,37 @@ len(doc.xpath("//div[@data-testid='sl.explore.card-container']"))
 __init__(cookies_file)          # Charge cookies, configure session
 _load_cookies()                 # Parse JSON/text cookies → session
 build_search_url(filters)       # Construit URL avec paramètres
-search(filters, url)            # Visite homepage → search → parse
+search(filters, url, max_pages) # Visite homepage → scrape N pages
 _parse_listings(html_content)   # XPath extraction → liste dicts
 save_to_json(results, filename) # Dump JSON avec encoding UTF-8
 ```
+
+**Pagination interne:**
+- Boucle sur `max_pages` (défaut: 1)
+- Ajoute `&LISTING-LISTpg=N` à l'URL
+- Visite homepage (page 1 uniquement)
+- Accumule résultats dans `all_results`
+- Déduplique par URL avec `set()`
+- Réindexe IDs de 1 à N
+- Délai 3-5s entre pages
+
+### enrich_annonces.py - AnnonceEnricher class
+
+```python
+__init__(cookies_file)                  # Configure session avec cookies
+extract_details_from_page(url)          # Scrape page annonce complète
+clean_surface(surface_str)              # Extrait float depuis "105 m²"
+clean_location(location_str)            # Parse ville/quartier
+enrich_annonces(annonces)               # Enrichit liste complète
+save_to_json(results, filename)         # Sauvegarde JSON enrichi
+```
+
+**Extraction des détails:**
+- JSON-LD structured data (GPS, adresse)
+- XPath sur éléments `data-*` (DPE, GES)
+- Regex pour dates et surfaces
+- Galerie d'images (dédupliquées)
+- Délai 2-4s entre annonces
 
 ### extract_cookies_selenium.py - CookieExtractor class
 
@@ -220,5 +337,6 @@ user-agent=Mozilla/5.0...
 **Limites:**
 - Cookies < 1h de validité
 - Rate limiting: ~1 requête/2-4s recommandé
-- Pagination non implémentée (1 page = ~27 annonces)
+- Pagination: ~27 annonces/page (testée jusqu'à 10 pages)
 - Photos non téléchargées (URLs disponibles dans HTML)
+- Limite SeLoger: ~5-10 pages max par recherche

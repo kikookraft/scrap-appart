@@ -152,88 +152,180 @@ class SeLogerScraper:
         params = '&'.join(params_list)
         return f"{base_url}?{params}"
 
-    def search(self, filters: Optional[Dict] = None, url: Optional[str] = None) -> List[Dict]:
+    def search(
+        self,
+        filters: Optional[Dict] = None,
+        url: Optional[str] = None,
+        max_pages: int = 1,
+        exclude_colocation: bool = True
+    ) -> List[Dict]:
         """
         Effectue une recherche et retourne les annonces
         
         Args:
             filters: Filtres de recherche (optionnel)
             url: URL directe (optionnel, prioritaire sur filters)
+            max_pages: Nombre maximum de pages à scraper (défaut: 1)
+            exclude_colocation: Filtrer les colocations (défaut: True)
             
         Returns:
             Liste de dictionnaires représentant les annonces
         """
-        # Utiliser l'URL fournie ou construire avec les filtres
-        search_url = url if url else self.build_search_url(filters)
+        all_results = []
         
-        print(f"🔍 Recherche sur: {search_url}")
-        
-        # Attendre avant la requête pour éviter la détection
-        self._wait_before_request()
-        
-        # Étape 1: Visiter la page d'accueil d'abord (comportement humain)
-        print("🏠 Visite de la page d'accueil...")
-        try:
-            home_headers = get_realistic_headers()
-            home_response = self._s.get(
-                'https://www.seloger.com/',
-                headers=home_headers,
-                timeout=30,
-                allow_redirects=True
-            )
-            if home_response.status_code == 200:
-                print("✅ Page d'accueil chargée")
+        for page_num in range(1, max_pages + 1):
+            print(f"\n{'='*60}")
+            print(f"📄 PAGE {page_num}/{max_pages}")
+            print('='*60)
+            
+            # Construire l'URL avec pagination
+            if url:
+                # URL fournie: ajouter paramètre de page
+                base_url = url
+                separator = '&' if '?' in base_url else '?'
+                if page_num > 1:
+                    search_url = f"{base_url}{separator}LISTING-LISTpg={page_num}"
+                else:
+                    search_url = base_url
             else:
-                print(f"⚠️  Page d'accueil: status {home_response.status_code}")
+                # Construire avec filtres
+                base_filters = filters.copy() if filters else {}
+                if page_num > 1:
+                    base_filters['LISTING-LISTpg'] = str(page_num)
+                search_url = self.build_search_url(base_filters)
             
-            # Petit délai pour simuler la lecture
-            time.sleep(random.uniform(1.5, 3.0))
-        except Exception as e:
-            print(f"⚠️  Erreur page d'accueil: {e}")
-        
-        # Étape 2: Effectuer la vraie requête
-        print("📋 Chargement des résultats de recherche...")
-        self._wait_before_request()
-        
-        try:
-            # Headers mis à jour avec le referer
-            search_headers = get_realistic_headers()
-            search_headers['Referer'] = 'https://www.seloger.com/'
-            search_headers['Sec-Fetch-Site'] = 'same-origin'
+            print(f"🔍 Recherche sur: {search_url}")
             
-            response = self._s.get(
-                search_url,
-                headers=search_headers,
-                timeout=30,
-                allow_redirects=True
-            )
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Erreur de connexion: {e}")
-            return []
+            # Attendre avant la requête pour éviter la détection
+            self._wait_before_request()
+            
+            # Étape 1: Visiter la page d'accueil (première page seulement)
+            if page_num == 1:
+                print("🏠 Visite de la page d'accueil...")
+                try:
+                    home_headers = get_realistic_headers()
+                    home_response = self._s.get(
+                        'https://www.seloger.com/',
+                        headers=home_headers,
+                        timeout=30,
+                        allow_redirects=True
+                    )
+                    if home_response.status_code == 200:
+                        print("✅ Page d'accueil chargée")
+                    else:
+                        status = home_response.status_code
+                        print(f"⚠️  Page d'accueil: status {status}")
+                    
+                    # Petit délai pour simuler la lecture
+                    time.sleep(random.uniform(1.5, 3.0))
+                except Exception as e:
+                    print(f"⚠️  Erreur page d'accueil: {e}")
+            
+            # Étape 2: Effectuer la vraie requête
+            print("📋 Chargement des résultats de recherche...")
+            self._wait_before_request()
+            
+            try:
+                # Headers mis à jour avec le referer
+                search_headers = get_realistic_headers()
+                search_headers['Referer'] = 'https://www.seloger.com/'
+                search_headers['Sec-Fetch-Site'] = 'same-origin'
+                
+                response = self._s.get(
+                    search_url,
+                    headers=search_headers,
+                    timeout=30,
+                    allow_redirects=True
+                )
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Erreur de connexion: {e}")
+                break
+            
+            if response.status_code == 403:
+                print("❌ Accès refusé (403) - Protection anti-bot")
+                print("💡 Suggestions avancées:")
+                print("   1. Cookies expirés (< 1 jour)")
+                print("   2. Ouvrez SeLoger dans Chrome et:")
+                print("      - Faites la même recherche manuellement")
+                print("      - Exportez les cookies JUSTE APRÈS")
+                print("      - Replacez-les dans .cookies")
+                print("   3. Le cookie 'datadome' change à chaque session")
+                print(f"   4. Cookies: {len(self._s.cookies)} chargés")
+                print("\n🔧 Debug: Cookies présents:")
+                for cookie in self._s.cookies:
+                    print(f"      - {cookie.name}")
+                break
+            
+            if response.status_code != 200:
+                print(f"❌ Erreur HTTP {response.status_code}")
+                break
+            
+            print(f"✅ Réponse reçue (status: {response.status_code})")
+            
+            # Parser les résultats
+            page_results = self._parse_listings(response.content)
+            
+            if not page_results:
+                print(f"⚠️  Aucune annonce sur la page {page_num}, arrêt")
+                break
+                
+            all_results.extend(page_results)
+            print(f"📊 Total cumulé: {len(all_results)} annonces")
+            
+            # Ne pas attendre après la dernière page
+            if page_num < max_pages:
+                delay = random.uniform(3.0, 5.0)
+                print(f"⏳ Pause de {delay:.1f}s avant page suivante...")
+                time.sleep(delay)
         
-        if response.status_code == 403:
-            print(f"❌ Accès refusé (403) - Protection anti-bot détectée")
-            print("💡 Suggestions avancées:")
-            print("   1. Vos cookies sont peut-être expirés (< 1 jour)")
-            print("   2. Ouvrez SeLoger dans Chrome et:")
-            print("      - Faites la même recherche manuellement")
-            print("      - Exportez les cookies JUSTE APRÈS")
-            print("      - Replacez-les dans .cookies")
-            print("   3. Le cookie 'datadome' change à chaque session")
-            print(f"   4. Cookies actuels: {len(self._s.cookies)} chargés")
-            print("\n🔧 Debug: Cookies présents:")
-            for cookie in self._s.cookies:
-                print(f"      - {cookie.name}")
-            return []
+        # Dédupliquer par URL et réindexer
+        seen_urls = set()
+        unique_results = []
+        for annonce in all_results:
+            url = annonce.get('url', '')
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                unique_results.append(annonce)
         
-        if response.status_code != 200:
-            print(f"❌ Erreur HTTP {response.status_code}")
-            return []
+        if len(unique_results) < len(all_results):
+            duplicates = len(all_results) - len(unique_results)
+            print(f"🔄 {duplicates} doublons supprimés")
         
-        print(f"✅ Réponse reçue (status: {response.status_code})")
+        # Filtrer les colocations si demandé
+        if exclude_colocation:
+            colocation_keywords = [
+                'coloc', 'colocation', 'chambre disponible', 'chambre meublée',
+                'espace commun', 'colocataire'
+            ]
+            
+            filtered_results = []
+            excluded_count = 0
+            
+            for annonce in unique_results:
+                # Vérifier titre et description
+                title = annonce.get('title', '').lower()
+                location = annonce.get('location', '').lower()
+                
+                is_colocation = any(
+                    keyword in title or keyword in location
+                    for keyword in colocation_keywords
+                )
+                
+                if not is_colocation:
+                    filtered_results.append(annonce)
+                else:
+                    excluded_count += 1
+            
+            if excluded_count > 0:
+                print(f"� {excluded_count} colocations exclues")
+            
+            unique_results = filtered_results
         
-        # Parser les résultats
-        return self._parse_listings(response.content)
+        # Réindexer avec des IDs uniques
+        for i, annonce in enumerate(unique_results, 1):
+            annonce['id'] = i
+        
+        return unique_results
 
     def _parse_listings(self, html_content: bytes) -> List[Dict]:
         """
@@ -378,6 +470,17 @@ if __name__ == "__main__":
         type=int,
         help='Surface minimum en m²'
     )
+    argparser.add_argument(
+        '--max-pages',
+        type=int,
+        default=10,
+        help='Nombre maximum de pages à scraper (défaut: 10)'
+    )
+    argparser.add_argument(
+        '--include-colocation',
+        action='store_true',
+        help='Inclure les colocations (par défaut: exclues)'
+    )
     
     args = argparser.parse_args()
     
@@ -395,13 +498,26 @@ if __name__ == "__main__":
     if args.surface_min:
         filters['spaceMin'] = str(args.surface_min)
     
+    # Déterminer si on exclut les colocations
+    exclude_coloc = not args.include_colocation
+    
     # Effectuer la recherche
     if args.url:
-        results = scraper.search(url=args.url)
+        results = scraper.search(
+            url=args.url,
+            max_pages=args.max_pages,
+            exclude_colocation=exclude_coloc
+        )
     else:
         # URL par défaut pour Lyon et Tassin-la-Demi-Lune
         print("🏙️  Recherche pour Lyon et Tassin-la-Demi-Lune")
-        results = scraper.search(filters=filters)
+        if exclude_coloc:
+            print("🚫 Exclusion des colocations activée")
+        results = scraper.search(
+            filters=filters,
+            max_pages=args.max_pages,
+            exclude_colocation=exclude_coloc
+        )
     
     # Sauvegarder les résultats
     if results:
