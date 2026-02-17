@@ -3,27 +3,31 @@ from lxml import html
 import argparse
 import json
 import os
-from pathlib import Path
-from http.cookiejar import MozillaCookieJar
+import time
+import random
 from typing import Dict, List, Optional
 
-# Headers de base (les cookies seront chargés séparément)
-HEADERS = {
-    'authority': 'www.seloger.com',
-    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-    'accept-language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-    'cache-control': 'max-age=0',
-    'referer': 'https://www.seloger.com/',
-    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Linux"',
-    'sec-fetch-dest': 'document',
-    'sec-fetch-mode': 'navigate',
-    'sec-fetch-site': 'same-origin',
-    'sec-fetch-user': '?1',
-    'upgrade-insecure-requests': '1',
-    'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-}
+def get_realistic_headers():
+    """
+    Génère des headers réalistes pour éviter la détection
+    """
+    return {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'DNT': '1',
+        'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Linux"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',  # Changé pour simuler navigation directe
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    }
 
 
 class SeLogerScraper:
@@ -38,7 +42,25 @@ class SeLogerScraper:
         """
         self._s = requests.Session()
         self.cookies_file = cookies_file
+        
+        # Configurer la session pour ressembler à un vrai navigateur
+        self._s.headers.update(get_realistic_headers())
+        
+        # Charger les cookies
         self._load_cookies()
+        
+        # Ajouter un délai aléatoire entre les requêtes
+        self._last_request_time = 0
+        self._min_delay = 2  # Minimum 2 secondes entre requêtes
+        
+    def _wait_before_request(self):
+        """Attend un délai aléatoire avant la requête pour éviter la détection"""
+        elapsed = time.time() - self._last_request_time
+        if elapsed < self._min_delay:
+            wait_time = self._min_delay - elapsed + random.uniform(0.5, 2.0)
+            print(f"⏳ Attente de {wait_time:.1f}s pour éviter la détection...")
+            time.sleep(wait_time)
+        self._last_request_time = time.time()
         
     def _load_cookies(self):
         """Charge les cookies depuis le fichier"""
@@ -95,14 +117,20 @@ class SeLogerScraper:
         Returns:
             URL de recherche complète
         """
-        base_url = "https://www.seloger.com/classified-search"
+        base_url = "https://www.seloger.com/list.htm"
         
         # Filtres par défaut pour Lyon et Tassin-la-Demi-Lune
+        # 1500€ max, 65m² min, 3 chambres min
         default_filters = {
-            'distributionTypes': 'Rent',  # Location
-            'estateTypes': 'House,Apartment',  # Maison et Appartement
-            'locations': 'FR069123,FR069244',  # Lyon et Tassin-la-Demi-Lune
-            'spaceMin': '28',  # Surface minimum
+            'projects': '1',              # 1 = Location, 2 = Vente
+            'types': '1,2',               # 1 = Appartement, 2 = Maison
+            'places': '[{ci:690123},{ci:690244}]',  # Lyon et Tassin
+            'price': 'NaN/1500',         # Min/Max prix (NaN = pas de min)
+            'surface': '65/NaN',         # Min/Max surface (NaN = pas de max)
+            'bedrooms': '3',             # Nombre de chambres minimum
+            'enterprise': '0',           # Pas d'annonces professionnelles
+            'qsVersion': '1.0',
+            'm': 'search_refine-redirection-search_results',
         }
         
         # Fusionner avec les filtres fournis
@@ -110,8 +138,19 @@ class SeLogerScraper:
             default_filters.update(filters)
         
         # Construire l'URL avec les paramètres
-        params = '&'.join([f"{k}={v}" for k, v in default_filters.items()])
-        return f"{base_url}?{params}&m=homepage_relaunch_my_last_search_classified_search_result"
+        # URL-encoder les paramètres spéciaux
+        import urllib.parse
+        params_list = []
+        for k, v in default_filters.items():
+            if k == 'places':
+                # Encoder correctement le paramètre places
+                encoded = urllib.parse.quote(str(v), safe='')
+                params_list.append(f"{k}={encoded}")
+            else:
+                params_list.append(f"{k}={v}")
+        
+        params = '&'.join(params_list)
+        return f"{base_url}?{params}"
 
     def search(self, filters: Optional[Dict] = None, url: Optional[str] = None) -> List[Dict]:
         """
@@ -129,20 +168,62 @@ class SeLogerScraper:
         
         print(f"🔍 Recherche sur: {search_url}")
         
-        # Effectuer la requête
+        # Attendre avant la requête pour éviter la détection
+        self._wait_before_request()
+        
+        # Étape 1: Visiter la page d'accueil d'abord (comportement humain)
+        print("🏠 Visite de la page d'accueil...")
         try:
-            response = self._s.get(search_url, headers=HEADERS, timeout=30)
+            home_headers = get_realistic_headers()
+            home_response = self._s.get(
+                'https://www.seloger.com/',
+                headers=home_headers,
+                timeout=30,
+                allow_redirects=True
+            )
+            if home_response.status_code == 200:
+                print("✅ Page d'accueil chargée")
+            else:
+                print(f"⚠️  Page d'accueil: status {home_response.status_code}")
+            
+            # Petit délai pour simuler la lecture
+            time.sleep(random.uniform(1.5, 3.0))
+        except Exception as e:
+            print(f"⚠️  Erreur page d'accueil: {e}")
+        
+        # Étape 2: Effectuer la vraie requête
+        print("📋 Chargement des résultats de recherche...")
+        self._wait_before_request()
+        
+        try:
+            # Headers mis à jour avec le referer
+            search_headers = get_realistic_headers()
+            search_headers['Referer'] = 'https://www.seloger.com/'
+            search_headers['Sec-Fetch-Site'] = 'same-origin'
+            
+            response = self._s.get(
+                search_url,
+                headers=search_headers,
+                timeout=30,
+                allow_redirects=True
+            )
         except requests.exceptions.RequestException as e:
             print(f"❌ Erreur de connexion: {e}")
             return []
         
         if response.status_code == 403:
             print(f"❌ Accès refusé (403) - Protection anti-bot détectée")
-            print("💡 Suggestions:")
-            print("   1. Vérifiez que vos cookies sont valides et à jour")
-            print("   2. Utilisez un navigateur pour visiter le site d'abord")
-            print("   3. Le cookie 'datadome' est particulièrement important")
+            print("💡 Suggestions avancées:")
+            print("   1. Vos cookies sont peut-être expirés (< 1 jour)")
+            print("   2. Ouvrez SeLoger dans Chrome et:")
+            print("      - Faites la même recherche manuellement")
+            print("      - Exportez les cookies JUSTE APRÈS")
+            print("      - Replacez-les dans .cookies")
+            print("   3. Le cookie 'datadome' change à chaque session")
             print(f"   4. Cookies actuels: {len(self._s.cookies)} chargés")
+            print("\n🔧 Debug: Cookies présents:")
+            for cookie in self._s.cookies:
+                print(f"      - {cookie.name}")
             return []
         
         if response.status_code != 200:
@@ -168,33 +249,57 @@ class SeLogerScraper:
         
         try:
             doc = html.fromstring(html_content)
-            listings = doc.xpath("//div[@data-test='sl.card-container']")
+            
+            # Nouveau sélecteur: chercher les conteneurs d'annonces
+            # (mis à jour suite à l'analyse de la structure HTML)
+            listings = doc.xpath(
+                "//div[@data-testid='sl.explore.card-container']"
+            )
             
             print(f"📋 {len(listings)} annonces trouvées")
             
             for i, listing in enumerate(listings, 1):
                 try:
-                    # Extraire les informations
-                    url_path = "".join(
-                        listing.xpath(
-                            ".//div[contains(@class, 'Card__ContentZone')]"
-                            "//a[contains(@name, 'classified-link')]/@href"
-                        )
+                    # Extraire l'URL
+                    url_path_list = listing.xpath(
+                        ".//a[@data-testid='sl.explore.coveringLink']/@href"
                     )
+                    url_path = url_path_list[0] if url_path_list else ""
                     url = f"https://www.seloger.com{url_path}" if url_path else ""
                     
-                    price = "".join(
-                        listing.xpath(".//div[@data-test='sl.price-label']/text()")
-                    ).strip()
+                    # Extraire le prix
+                    price_texts = listing.xpath(
+                        ".//div[@data-testid='sl.explore-card-price']//text()"
+                    )
+                    price_texts = [t.strip() for t in price_texts if t.strip()]
+                    price = price_texts[0] if price_texts else ""
                     
-                    title = "".join(
-                        listing.xpath(".//div[@data-test='sl.title']/text()")
-                    ).strip()
+                    # Extraire tous les textes pour obtenir infos
+                    all_texts = listing.xpath(".//text()")
+                    all_texts = [t.strip() for t in all_texts
+                                 if t.strip() and len(t.strip()) > 2]
                     
-                    # Extraire des infos supplémentaires si disponibles
-                    location = "".join(
-                        listing.xpath(".//div[@data-test='sl.localisation']/text()")
-                    ).strip()
+                    # Le titre est généralement après le prix
+                    title = ""
+                    location = ""
+                    surface = ""
+                    bedrooms = ""
+                    
+                    for idx, text in enumerate(all_texts):
+                        # Le titre contient souvent "Appartement" ou "Maison"
+                        if "Appartement" in text or "Maison" in text:
+                            title = text
+                        # La localisation contient souvent un code postal
+                        if "(" in text and ")" in text and any(
+                            c.isdigit() for c in text
+                        ):
+                            location = text
+                        # Surface
+                        if "m²" in text:
+                            surface = text
+                        # Chambres
+                        if "chambre" in text:
+                            bedrooms = text
                     
                     # Créer l'objet annonce
                     annonce = {
@@ -203,6 +308,8 @@ class SeLogerScraper:
                         'title': title,
                         'price': price,
                         'location': location,
+                        'surface': surface,
+                        'bedrooms': bedrooms,
                     }
                     
                     results.append(annonce)

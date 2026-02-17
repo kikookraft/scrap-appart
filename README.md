@@ -1,160 +1,224 @@
-# SeLoger Scraper 🏠
+# SeLoger Scraper
 
-Scraper d'annonces immobilières pour SeLoger avec support de filtres et authentification par cookies.
+Scraper d'annonces immobilières SeLoger avec authentification par cookies et contournement anti-bot DataDome.
+
+## Architecture
+
+```
+scrap.py                          # Scraper principal (requests + lxml)
+extract_cookies_selenium.py       # Extracteur de cookies (Selenium + Chrome)
+.cookies                          # Cookies au format JSON simple
+annonces.json                     # Résultats de scraping
+```
 
 ## Installation
 
 ```bash
-pip install requests lxml
+pip install -r requirements.txt
 ```
 
-## Configuration des cookies
+**Dépendances:**
+- `requests` (2.31.0+) - HTTP client
+- `lxml` (4.9.0+) - Parser HTML/XPath
+- `selenium` (4.38.0+) - Automation navigateur
+- `webdriver-manager` (4.0.1+) - Gestion ChromeDriver automatique
 
-Pour utiliser le scraper avec authentification, vous devez créer un fichier `.cookies` contenant vos cookies de session SeLoger.
-
-### Méthode 1: Format JSON simple (recommandé)
-
-Créez un fichier `.cookies` avec le format JSON suivant:
-
-```json
-{
-  "visitId": "1657611082733-168489653",
-  "_gcl_au": "1.1.1398385248.1657611083",
-  "datadome": "votre_token_datadome",
-  "_ga": "GA1.2.418942909.1657611083"
-}
-```
-
-### Méthode 2: Format JSON complet (export navigateur)
-
-Vous pouvez aussi exporter vos cookies depuis le navigateur (avec une extension comme "EditThisCookie") et les coller dans `.cookies`:
-
-```json
-[
-  {
-    "name": "visitId",
-    "value": "1657611082733-168489653",
-    "domain": ".seloger.com",
-    "path": "/"
-  },
-  {
-    "name": "_ga",
-    "value": "GA1.2.418942909.1657611083",
-    "domain": ".seloger.com",
-    "path": "/"
-  }
-]
-```
-
-### Comment récupérer vos cookies ?
-
-1. **Via les DevTools du navigateur:**
-   - Ouvrez Chrome/Firefox DevTools (F12)
-   - Allez sur seloger.com et connectez-vous
-   - Onglet "Application" > "Cookies" > "https://www.seloger.com"
-   - Copiez les cookies importants (visitId, datadome, _ga, etc.)
-
-2. **Via une extension:**
-   - Installez "EditThisCookie" ou "Cookie-Editor"
-   - Visitez seloger.com
-   - Exportez les cookies au format JSON
-
-## Utilisation
-
-### Recherche basique (Lyon et Tassin-la-Demi-Lune)
+## Extraction des cookies
 
 ```bash
-python scrap.py
+python3 extract_cookies_selenium.py
 ```
 
-### Avec une URL personnalisée
+**Processus:**
+1. Lance Chrome avec options anti-détection
+2. Ouvre SeLoger.com
+3. Attend que l'utilisateur navigue et se connecte manuellement
+4. Appuyer sur ENTRÉE dans le terminal
+5. Extrait tous les cookies automatiquement
+6. Sauvegarde dans `.cookies` (format simple) et `.cookies.full` (format complet)
+
+**Cookies critiques:**
+- `datadome` - Protection anti-bot (expire rapidement)
+- `visitId` - Session utilisateur
+- `_ga`, `_gid` - Google Analytics
+
+**Durée de vie:** < 1 heure (recommandé: extraire juste avant scraping)
+
+## Scraping
 
 ```bash
-python scrap.py --url "https://www.seloger.com/classified-search?distributionTypes=Rent&estateTypes=House,Apartment&locations=FR069123&spaceMin=28"
+python3 scrap.py
 ```
 
-### Avec des filtres
+**Filtres par défaut:**
+- Prix: max 1500€
+- Surface: min 65m²
+- Chambres: min 3
+- Villes: Lyon (690123) + Tassin-la-Demi-Lune (690244)
+- Type: Location d'appartements/maisons
 
+**URL générée:**
+```
+https://www.seloger.com/list.htm?projects=1&types=1,2&places=[{ci:690123},{ci:690244}]&price=NaN/1500&surface=65/NaN&bedrooms=3
+```
+
+**Options CLI:**
 ```bash
-python scrap.py --surface-min 35
+python3 scrap.py --url "https://..."  # URL personnalisée
+python3 scrap.py --output results.json
 ```
 
-### Spécifier un fichier de cookies différent
+## Techniques anti-bot
 
-```bash
-python scrap.py --cookies mes_cookies.json
+**Headers réalistes:**
+```python
+User-Agent: Mozilla/5.0 Chrome/131.0.0.0
+Accept-Encoding: gzip, deflate, br, zstd
+Sec-Fetch-Dest: document
+Sec-Fetch-Mode: navigate
+Sec-Fetch-Site: same-origin
 ```
 
-### Spécifier un fichier de sortie
+**Comportement humain:**
+1. Visite page d'accueil (`/`)
+2. Délai aléatoire 1.5-3s
+3. Navigation vers recherche avec `Referer` header
+4. Délai aléatoire 2-4s entre requêtes
 
-```bash
-python scrap.py --output resultats.json
+**Session persistante:** Conservation des cookies via `requests.Session()`
+
+## XPath Selectors (Mis à jour 2026)
+
+SeLoger change régulièrement sa structure HTML. Sélecteurs actuels:
+
+```python
+# Conteneurs d'annonces
+"//div[@data-testid='sl.explore.card-container']"
+
+# URL de l'annonce
+".//a[@data-testid='sl.explore.coveringLink']/@href"
+
+# Prix
+".//div[@data-testid='sl.explore-card-price']//text()"
+
+# Textes: titre, localisation, surface, chambres
+".//text()"  # Filtrage par patterns (m², chambres, codes postaux)
 ```
 
-## Options disponibles
+**Si 0 résultats:**
+1. Vérifier cookies valides et récents
+2. Inspecter HTML sauvegardé
+3. Identifier nouveaux `data-testid` dans le DOM
+4. Mettre à jour XPath dans `_parse_listings()`
 
-- `-u, --url`: URL de recherche SeLoger à scraper
-- `-c, --cookies`: Fichier de cookies (défaut: `.cookies`)
-- `-o, --output`: Fichier JSON de sortie (défaut: `annonces.json`)
-- `--surface-min`: Surface minimum en m²
-
-## Filtres de recherche
-
-Le scraper supporte les filtres suivants (via la méthode `build_search_url`):
-
-- `distributionTypes`: Type de transaction (Rent, Sale)
-- `estateTypes`: Type de bien (House, Apartment, etc.)
-- `locations`: Codes de localisation (FR069123 pour Lyon, FR069244 pour Tassin)
-- `spaceMin`: Surface minimum en m²
-- `priceMin`, `priceMax`: Fourchette de prix
-- `roomsMin`, `roomsMax`: Nombre de pièces
-
-## Codes de localisation
-
-Quelques codes utiles pour la région lyonnaise:
-
-- **Lyon**: FR069123
-- **Tassin-la-Demi-Lune**: FR069244
-- **Villeurbanne**: FR069266
-- **Caluire-et-Cuire**: FR069034
-- **Écully**: FR069081
-
-Vous pouvez trouver d'autres codes en inspectant les URLs de recherche sur SeLoger.
-
-## Exemple de résultat
-
-Le fichier JSON généré contient:
+## Format de sortie (annonces.json)
 
 ```json
 [
   {
     "id": 1,
-    "url": "https://www.seloger.com/annonces/...",
-    "title": "Appartement 2 pièces 45 m²",
-    "price": "850 € CC",
-    "location": "Lyon 6ème"
-  },
-  {
-    "id": 2,
-    "url": "https://www.seloger.com/annonces/...",
-    "title": "Maison 4 pièces 80 m²",
-    "price": "1 200 € CC",
-    "location": "Tassin-la-Demi-Lune"
+    "url": "https://www.seloger.com/annonces/locations/...",
+    "title": "Appartement meublé",
+    "price": "500 €",
+    "location": "Lyon 8ème (69008)",
+    "surface": "105 m²",
+    "bedrooms": "3 chambres"
   }
 ]
 ```
 
-## Développement futur
+## Troubleshooting
 
-Le système de filtrage sera amélioré pour permettre:
-- Filtres plus avancés (équipements, étage, DPE, etc.)
-- Recherche multi-critères complexe
-- Sauvegarde de profils de recherche
-- Notifications pour nouvelles annonces
-- Export dans d'autres formats (CSV, Excel, etc.)
+**403 Forbidden:**
+- Cookies expirés → Ré-extraire avec Selenium
+- Cookie `datadome` manquant → Vérifier `.cookies`
+- IP blacklistée temporairement → Attendre 5-10 min
 
-## Notes
+**0 annonces trouvées (status 200):**
+- HTML structure changée → Analyser XPath selectors
+- Script debug rapide:
+```python
+from lxml import html
+doc = html.fromstring(open('response.html', 'rb').read())
+len(doc.xpath("//div[@data-testid='sl.explore.card-container']"))
+```
 
-- Le scraper respecte les données publiques de SeLoger
-- L'utilisation de cookies permet d'accéder aux fonctionnalités nécessitant une session
-- Veillez à ne pas surcharger les serveurs avec trop de requêtes
+**Selenium crash:**
+- Chrome/Chromium manquant → `apt install chromium-browser`
+- Permissions → `chmod +x chromedriver`
+- Headless fail → Retirer `--headless` des options Chrome
+
+## Structure du code
+
+### scrap.py - SeLogerScraper class
+
+```python
+__init__(cookies_file)          # Charge cookies, configure session
+_load_cookies()                 # Parse JSON/text cookies → session
+build_search_url(filters)       # Construit URL avec paramètres
+search(filters, url)            # Visite homepage → search → parse
+_parse_listings(html_content)   # XPath extraction → liste dicts
+save_to_json(results, filename) # Dump JSON avec encoding UTF-8
+```
+
+### extract_cookies_selenium.py - CookieExtractor class
+
+```python
+__init__()                      # Configure Chrome avec options anti-bot
+navigate_to_seloger()           # Ouvre SeLoger dans Chrome
+wait_for_user_interaction()     # Pause pour login manuel
+extract_cookies()               # Récupère tous les cookies du driver
+save_cookies_simple_format()    # Sauvegarde JSON simple
+save_cookies_full_format()      # Sauvegarde JSON complet avec metadata
+verify_cookies()                # Vérifie présence cookies critiques
+```
+
+## Paramètres modifiables
+
+**Filtres de recherche (scrap.py ligne ~120):**
+```python
+default_filters = {
+    'projects': '1',              # 1=Location, 2=Vente
+    'types': '1,2',               # 1=Appart, 2=Maison, 4=Parking
+    'places': '[{ci:690123},{ci:690244}]',  # Codes INSEE
+    'price': 'NaN/1500',         # Min/Max
+    'surface': '65/NaN',         # Min/Max m²
+    'bedrooms': '3',             # Min chambres
+}
+```
+
+**Délais anti-bot (scrap.py ligne ~58):**
+```python
+self._min_delay = 2.0  # secondes
+self._max_delay = 4.0
+```
+
+**Codes INSEE villes (à ajouter dans `places`):**
+- Lyon: 690123
+- Tassin-la-Demi-Lune: 690244
+- Villeurbanne: 690266
+- Vénissieux: 690259
+
+Format: `[{ci:690123},{ci:690244},{ci:690266}]`
+
+## Notes techniques
+
+**Protection DataDome:**
+- Fingerprinting navigateur (Canvas, WebGL, fonts)
+- Analyse comportementale (mouvements souris, timing)
+- Challenge invisible (JavaScript, cookies)
+- Contournement: cookies extraits d'un vrai navigateur
+
+**Selenium options critiques:**
+```python
+--disable-blink-features=AutomationControlled
+--disable-dev-shm-usage
+--no-sandbox
+user-agent=Mozilla/5.0...
+```
+
+**Limites:**
+- Cookies < 1h de validité
+- Rate limiting: ~1 requête/2-4s recommandé
+- Pagination non implémentée (1 page = ~27 annonces)
+- Photos non téléchargées (URLs disponibles dans HTML)
