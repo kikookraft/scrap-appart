@@ -9,6 +9,10 @@ let map = null;
 let markersLayer = null;
 let currentView = 'list'; // 'list' ou 'map'
 
+// Debounce timer pour optimiser les filtres
+let filterDebounceTimer = null;
+const DEBOUNCE_DELAY = 300; // millisecondes
+
 // Éléments DOM
 const annoncesContainer = document.getElementById('annonces-container');
 const loadingElement = document.getElementById('loading');
@@ -41,28 +45,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Configuration des écouteurs d'événements
 function setupEventListeners() {
-    searchInput.addEventListener('input', filterAnnonces);
+    // Recherche instantanée avec debounce
+    searchInput.addEventListener('input', debouncedFilter);
+    
+    // Select sans debounce (changement unique)
     sortSelect.addEventListener('change', sortAnnonces);
+    bedroomsFilter.addEventListener('change', filterAnnonces);
+    roomsFilter.addEventListener('change', filterAnnonces);
+    cityFilter.addEventListener('change', filterAnnonces);
+    
     resetButton.addEventListener('click', resetFilters);
     closeModal.addEventListener('click', () => modal.style.display = 'none');
     window.addEventListener('click', (e) => {
         if (e.target === modal) modal.style.display = 'none';
     });
     
-    // Nouveaux écouteurs pour les filtres avancés
+    // Nouveaux écouteurs pour les filtres avancés avec debounce
     toggleAdvancedBtn.addEventListener('click', toggleAdvancedFilters);
-    priceMinInput.addEventListener('input', filterAnnonces);
-    priceMaxInput.addEventListener('input', filterAnnonces);
-    surfaceMinInput.addEventListener('input', filterAnnonces);
-    surfaceMaxInput.addEventListener('input', filterAnnonces);
-    bedroomsFilter.addEventListener('change', filterAnnonces);
-    roomsFilter.addEventListener('change', filterAnnonces);
-    cityFilter.addEventListener('change', filterAnnonces);
+    priceMinInput.addEventListener('input', debouncedFilter);
+    priceMaxInput.addEventListener('input', debouncedFilter);
+    surfaceMinInput.addEventListener('input', debouncedFilter);
+    surfaceMaxInput.addEventListener('input', debouncedFilter);
     
     // Onglets
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
+}
+
+// Fonction debounce pour optimiser les filtres
+function debouncedFilter() {
+    // Annuler le timer précédent
+    if (filterDebounceTimer) {
+        clearTimeout(filterDebounceTimer);
+    }
+    
+    // Afficher un indicateur visuel subtil (optionnel)
+    totalAnnoncesSpan.style.opacity = '0.5';
+    
+    // Créer un nouveau timer
+    filterDebounceTimer = setTimeout(() => {
+        filterAnnonces();
+        totalAnnoncesSpan.style.opacity = '1';
+    }, DEBOUNCE_DELAY);
 }
 
 // Toggle des filtres avancés
@@ -294,7 +319,6 @@ function resetFilters() {
 
 // Afficher les annonces
 function renderAnnonces() {
-    annoncesContainer.innerHTML = '';
     updateStats();
 
     if (filteredAnnonces.length === 0) {
@@ -306,10 +330,17 @@ function renderAnnonces() {
         return;
     }
 
+    // Utiliser un fragment pour améliorer les performances
+    const fragment = document.createDocumentFragment();
+    
     filteredAnnonces.forEach(annonce => {
         const card = createAnnonceCard(annonce);
-        annoncesContainer.appendChild(card);
+        fragment.appendChild(card);
     });
+    
+    // Mettre à jour le DOM en une seule fois
+    annoncesContainer.innerHTML = '';
+    annoncesContainer.appendChild(fragment);
     
     // Mettre à jour la carte si on est en vue carte
     if (currentView === 'map' && map) {
@@ -642,10 +673,87 @@ function getAnnonceCoordinates(annonce) {
         };
     }
     
-    // Coordonnées approximatives par ville (à améliorer avec une vraie géolocalisation)
+    // Extraire les informations de localisation
     const city = annonce.location?.address?.city?.toLowerCase() || '';
+    const district = annonce.location?.address?.district?.toLowerCase() || '';
+    const zipCode = annonce.location?.address?.zipCode || '';
     
-    // Base de données simple de coordonnées des villes
+    // Base de données détaillée des quartiers de Lyon
+    const lyonDistricts = {
+        // Lyon 1er
+        'pentes': [45.770, 4.831],
+        'terreaux': [45.767, 4.834],
+        'hôtel de ville': [45.767, 4.836],
+        'martinière': [45.773, 4.829],
+        
+        // Lyon 2ème
+        'ainay': [45.750, 4.826],
+        'bellecour': [45.757, 4.833],
+        'perrache': [45.746, 4.825],
+        'confluence': [45.740, 4.815],
+        'carnot': [45.751, 4.827],
+        
+        // Lyon 3ème
+        'part-dieu': [45.760, 4.856],
+        'part dieu': [45.760, 4.856],
+        'préfecture': [45.754, 4.845],
+        'liberté': [45.754, 4.845],
+        'préfecture liberté': [45.754, 4.845],
+        'villette': [45.762, 4.870],
+        'montchat': [45.755, 4.880],
+        'grange blanche': [45.745, 4.875],
+        'sans souci': [45.747, 4.867],
+        'dauphiné': [45.760, 4.863],
+        
+        // Lyon 4ème
+        'croix-rousse': [45.778, 4.827],
+        'plateau': [45.778, 4.827],
+        'serin': [45.786, 4.827],
+        
+        // Lyon 5ème
+        'vieux-lyon': [45.763, 4.826],
+        'vieux lyon': [45.763, 4.826],
+        'fourvière': [45.762, 4.823],
+        'saint-just': [45.757, 4.815],
+        'point du jour': [45.749, 4.799],
+        'ménival': [45.749, 4.799],
+        'point du jour-ménival': [45.749, 4.799],
+        
+        // Lyon 6ème
+        'brotteaux': [45.770, 4.850],
+        'bellecombe': [45.769, 4.865],
+        'tête d\'or': [45.778, 4.852],
+        'foch': [45.770, 4.843],
+        'masséna': [45.771, 4.846],
+        'vitton': [45.774, 4.856],
+        
+        // Lyon 7ème
+        'jean macé': [45.745, 4.841],
+        'gerland': [45.726, 4.837],
+        'guillotière': [45.750, 4.842],
+        'garibaldi': [45.753, 4.851],
+        'jean jaurès': [45.747, 4.846],
+        
+        // Lyon 8ème
+        'monplaisir': [45.738, 4.877],
+        'états-unis': [45.740, 4.867],
+        'etats-unis': [45.740, 4.867],
+        'mermoz': [45.732, 4.876],
+        'moulin à vent': [45.744, 4.865],
+        'transvaal': [45.737, 4.871],
+        'bachut': [45.729, 4.863],
+        
+        // Lyon 9ème
+        'vaise': [45.781, 4.805],
+        'gorge de loup': [45.766, 4.804],
+        'duchère': [45.788, 4.798],
+        'saint-rambert': [45.810, 4.833],
+        'rochecardon': [45.781, 4.805],
+        'industrie': [45.781, 4.805],
+        'vaise-rochecardon-industrie': [45.781, 4.805]
+    };
+    
+    // Base de données des villes
     const cityCoords = {
         'lyon': [45.75, 4.85],
         'lyon 1er': [45.767, 4.834],
@@ -657,6 +765,7 @@ function getAnnonceCoordinates(annonce) {
         'lyon 7ème': [45.735, 4.840],
         'lyon 8ème': [45.737, 4.871],
         'lyon 9ème': [45.780, 4.805],
+        'villeurbanne': [45.766, 4.880],
         'paris': [48.856, 2.352],
         'marseille': [43.296, 5.370],
         'lille': [50.629, 3.057],
@@ -669,14 +778,27 @@ function getAnnonceCoordinates(annonce) {
         'rennes': [48.117, -1.677]
     };
     
-    // Chercher une correspondance
-    for (const [cityName, coords] of Object.entries(cityCoords)) {
-        if (city.includes(cityName)) {
-            // Ajouter une variation aléatoire plus importante pour disperser les marqueurs
-            // Variation de ~2km (0.02 degrés ≈ 2km)
-            const lat = coords[0] + (Math.random() - 0.5) * 0.04;
-            const lng = coords[1] + (Math.random() - 0.5) * 0.04;
-            return { lat, lng };
+    // Chercher d'abord par quartier (plus précis)
+    if (district) {
+        for (const [districtName, coords] of Object.entries(lyonDistricts)) {
+            if (district.includes(districtName) || districtName.includes(district)) {
+                // Ajouter une petite variation aléatoire pour disperser les marqueurs (~200m)
+                const lat = coords[0] + (Math.random() - 0.5) * 0.003;
+                const lng = coords[1] + (Math.random() - 0.5) * 0.003;
+                return { lat, lng };
+            }
+        }
+    }
+    
+    // Sinon chercher par ville/arrondissement
+    if (city) {
+        for (const [cityName, coords] of Object.entries(cityCoords)) {
+            if (city.includes(cityName)) {
+                // Variation plus importante si pas de quartier spécifique (~500m)
+                const lat = coords[0] + (Math.random() - 0.5) * 0.008;
+                const lng = coords[1] + (Math.random() - 0.5) * 0.008;
+                return { lat, lng };
+            }
         }
     }
     
