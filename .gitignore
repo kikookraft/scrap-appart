@@ -4,7 +4,7 @@
 
 # Résultats de scraping
 annonces.json
-*.json
+# *.json
 !.cookies.example
 
 # Python
@@ -45,3 +45,4 @@ env/
 .DS_Store
 Thumbs.db
 .cookies.full
+annonces_enriched.json

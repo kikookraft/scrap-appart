@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visualiseur d'Annonces Immobilières</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,24 +14,83 @@
         <h1>🏠 Annonces Immobilières</h1>
         <div class="stats">
             <span id="total-annonces">0 annonces</span>
-            <span class="separator">|</span>
-            <select id="data-source">
-                <option value="annonces.json">Annonces simples</option>
-                <option value="annonces_enriched.json">Annonces enrichies</option>
-            </select>
         </div>
     </header>
 
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="list">📋 Liste</button>
+        <button class="tab-btn" data-tab="map">🗺️ Carte</button>
+    </div>
+
     <div class="filters">
-        <input type="text" id="search" placeholder="🔍 Rechercher par titre, localisation...">
-        <select id="sort">
-            <option value="">Trier par...</option>
-            <option value="price-asc">Prix croissant</option>
-            <option value="price-desc">Prix décroissant</option>
-            <option value="surface-asc">Surface croissante</option>
-            <option value="surface-desc">Surface décroissante</option>
-        </select>
-        <button id="reset-filters">Réinitialiser</button>
+        <div class="filters-row">
+            <input type="text" id="search" placeholder="🔍 Rechercher par titre, localisation...">
+            <button id="toggle-advanced" class="toggle-btn">🔽 Filtres avancés</button>
+            <button id="reset-filters">Réinitialiser</button>
+        </div>
+        
+        <div id="advanced-filters" class="advanced-filters" style="display: none;">
+            <div class="filter-group">
+                <label>💰 Prix (€/mois)</label>
+                <div class="range-inputs">
+                    <input type="number" id="price-min" placeholder="Min" min="0">
+                    <span>-</span>
+                    <input type="number" id="price-max" placeholder="Max" min="0">
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <label>📐 Surface (m²)</label>
+                <div class="range-inputs">
+                    <input type="number" id="surface-min" placeholder="Min" min="0">
+                    <span>-</span>
+                    <input type="number" id="surface-max" placeholder="Max" min="0">
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <label>🛏️ Chambres</label>
+                <select id="bedrooms-filter">
+                    <option value="">Toutes</option>
+                    <option value="1">1+</option>
+                    <option value="2">2+</option>
+                    <option value="3">3+</option>
+                    <option value="4">4+</option>
+                    <option value="5">5+</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>🏠 Pièces</label>
+                <select id="rooms-filter">
+                    <option value="">Toutes</option>
+                    <option value="1">1+</option>
+                    <option value="2">2+</option>
+                    <option value="3">3+</option>
+                    <option value="4">4+</option>
+                    <option value="5">5+</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>📍 Ville</label>
+                <select id="city-filter">
+                    <option value="">Toutes les villes</option>
+                    <!-- Options générées dynamiquement -->
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>📊 Trier par</label>
+                <select id="sort">
+                    <option value="">Par défaut</option>
+                    <option value="price-asc">Prix croissant</option>
+                    <option value="price-desc">Prix décroissant</option>
+                    <option value="surface-asc">Surface croissante</option>
+                    <option value="surface-desc">Surface décroissante</option>
+                </select>
+            </div>
+        </div>
     </div>
 
     <div id="loading" class="loading">
@@ -40,8 +102,14 @@
         <p>❌ Erreur lors du chargement des annonces</p>
     </div>
 
-    <div id="annonces-container" class="annonces-grid">
-        <!-- Les annonces seront insérées ici par JavaScript -->
+    <div id="list-view" class="tab-content active">
+        <div id="annonces-container" class="annonces-grid">
+            <!-- Les annonces seront insérées ici par JavaScript -->
+        </div>
+    </div>
+
+    <div id="map-view" class="tab-content">
+        <div id="map"></div>
     </div>
 
     <div id="modal" class="modal">
@@ -51,6 +119,8 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

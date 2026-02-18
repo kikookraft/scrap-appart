@@ -61,7 +61,7 @@ def init_driver():
 
 
 def extract_details(driver, url: str) -> Dict:
-    """Extrait les détails d'une annonce"""
+    """Extrait les détails d'une annonce depuis les zones structurées"""
     details = {
         'gps_latitude': None,
         'gps_longitude': None,
@@ -72,6 +72,10 @@ def extract_details(driver, url: str) -> Dict:
         'images': [],
         'tags': [],
         'surface_clean': None,
+        'prix_clean': None,
+        'chambres_clean': None,
+        'pieces_clean': None,
+        'etage_clean': None,
         'location_clean': None,
         'date_recuperation': datetime.now().isoformat(),
         'date_publication': None,
@@ -88,7 +92,7 @@ def extract_details(driver, url: str) -> Dict:
         # Cliquer sur "Voir plus" pour déplier la description complète
         try:
             voir_plus_button = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.XPATH, 
+                EC.element_to_be_clickable((By.XPATH,
                     "//button[contains(text(), 'Voir plus') or "
                     "contains(text(), 'voir plus')]"))
             )
@@ -104,7 +108,86 @@ def extract_details(driver, url: str) -> Dict:
         page_source = driver.page_source
         doc = html.fromstring(page_source.encode('utf-8'))
         
-        # Extraire la description complète
+        # === EXTRACTION DES DONNÉES STRUCTURÉES ===
+        
+        # 1. Extraire le prix depuis le H1
+        prix_elements = doc.xpath(
+            "//h1//span[contains(@class, 'css-1ln7jbg')]//text()"
+        )
+        if not prix_elements:
+            # Fallback: chercher dans tout le H1
+            prix_elements = doc.xpath(
+                "//h1//span[contains(text(), '€')]//text()"
+            )
+        
+        if prix_elements:
+            prix_text = ''.join([str(t).strip() for t in prix_elements])
+            # Extraire le montant
+            match_prix = re.search(r'(\d+(?:\s*\d+)*)\s*€', prix_text)
+            if match_prix:
+                details['prix_clean'] = match_prix.group(1).replace(' ', '')
+        
+        # 2. Extraire les caractéristiques (pièces, chambres, surface, étage)
+        carac_h1 = doc.xpath(
+            "//div[contains(@class, 'css-2h4925')]//text()"
+        )
+        if carac_h1:
+            carac_text = ' '.join([str(t).strip() for t in carac_h1])
+            
+            # Extraire le nombre de pièces
+            match_pieces = re.search(r'(\d+)\s*pièces?', carac_text)
+            if match_pieces:
+                details['pieces_clean'] = match_pieces.group(1)
+            
+            # Extraire le nombre de chambres
+            match_chambres = re.search(r'(\d+)\s*chambres?', carac_text)
+            if match_chambres:
+                details['chambres_clean'] = match_chambres.group(1)
+            
+            # Extraire la surface
+            match_surface = re.search(r'(\d+(?:[.,]\d+)?)\s*m[²2]', carac_text)
+            if match_surface:
+                details['surface_clean'] = match_surface.group(1)
+            
+            # Extraire l'étage
+            match_etage = re.search(
+                r'(\d+(?:er|ème)?)\s*étage',
+                carac_text
+            )
+            if match_etage:
+                details['etage_clean'] = match_etage.group(1)
+        
+        # 3. Extraire le quartier/localisation depuis le H1
+        location_elements = doc.xpath(
+            "//h1//span[contains(@class, 'css-1x2e3ne')]//text()"
+        )
+        if location_elements:
+            location_full = ' '.join(
+                [str(t).strip() for t in location_elements]
+            )
+            details['location_clean'] = location_full
+            
+            # Parser la ville et le quartier
+            # Format attendu: "Le Grand Trou, Lyon 8ème (69008)"
+            match = re.search(
+                r'([^,]+),\s*([^(]+)\s*\((\d+)\)',
+                location_full
+            )
+            if match:
+                details['quartier'] = match.group(1).strip()
+                ville_arr = match.group(2).strip()
+                code_postal = match.group(3).strip()
+                details['ville'] = f"{ville_arr} ({code_postal})"
+            else:
+                # Fallback: essayer d'extraire au moins la ville
+                match_ville = re.search(
+                    r'(Lyon\s+\d+(?:ème|er)?)',
+                    location_full
+                )
+                if match_ville:
+                    details['ville'] = match_ville.group(1)
+        
+        # 4. Extraire la description complète
         description_elements = doc.xpath(
             "//h2[contains(text(), 'Description') or "
             "contains(text(), 'description')]"
@@ -119,15 +202,17 @@ def extract_details(driver, url: str) -> Dict:
         
         if description_elements:
             description_text = ' '.join([
-                str(t).strip() for t in description_elements if str(t).strip()
+                str(t).strip() for t in description_elements
+                if str(t).strip()
             ])
             # Nettoyer le texte
             description_text = re.sub(r'\s+', ' ', description_text)
-            description_text = description_text.replace('Voir plus', '').strip()
+            description_text = description_text.replace(
+                'Voir plus', ''
+            ).strip()
             details['description'] = description_text
-
         
-        # Extraire les tags/caractéristiques
+        # 5. Extraire les tags/caractéristiques
         carac_section = doc.xpath(
             "//h2[contains(text(), 'Caractéristiques')]"
             "/following-sibling::ul//li//text()[normalize-space()]"
@@ -136,11 +221,13 @@ def extract_details(driver, url: str) -> Dict:
         for text in carac_section:
             text = str(text).strip()
             if text and len(text) > 1 and text not in tags:
-                if text not in ['Voir', 'plus', 'moins', 'caractéristiques']:
+                if text not in [
+                    'Voir', 'plus', 'moins', 'caractéristiques'
+                ]:
                     tags.append(text)
         details['tags'] = tags[:15]
         
-        # Extraire les images
+        # 6. Extraire les images
         img_urls = doc.xpath("//img/@src")
         seen_images = set()
         for img_url in img_urls:
@@ -156,11 +243,12 @@ def extract_details(driver, url: str) -> Dict:
             elif img_url.startswith('/'):
                 img_url = 'https://www.seloger.com' + img_url
             
-            if any(ext in img_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+            if any(ext in img_url.lower()
+                   for ext in ['.jpg', '.jpeg', '.png', '.webp']):
                 details['images'].append(img_url)
                 seen_images.add(img_url)
         
-        # Extraire DPE
+        # 7. Extraire DPE
         dpe_section = doc.xpath(
             "//h3[contains(text(), 'Diagnostic de Performance')]"
             "/following-sibling::div//text()[normalize-space()]"
@@ -175,7 +263,7 @@ def extract_details(driver, url: str) -> Dict:
                 details['dpe'] = match.group(1)
                 break
         
-        # Extraire GES
+        # 8. Extraire GES
         ges_section = doc.xpath(
             "//h3[contains(text(), 'mission') or contains(text(), 'GES')]"
             "/following-sibling::div//text()[normalize-space()]"
@@ -189,15 +277,6 @@ def extract_details(driver, url: str) -> Dict:
             if match:
                 details['ges'] = match.group(1)
                 break
-        
-        # Extraire localisation
-        h1_texts = doc.xpath("//h1//text()")
-        location_text = ' '.join([t.strip() for t in h1_texts if t.strip()])
-        match = re.search(r'([A-ZÀ-ÿ][a-zà-ÿ\s-]+)\s+(\d+(?:er|ème)?)', 
-                         location_text)
-        if match:
-            details['ville'] = match.group(1).strip()
-            details['quartier'] = match.group(2).strip()
         
         return details
         

@@ -15,10 +15,8 @@ webview/                          # Interface web de visualisation
   ├── index.html                  # Page principale
   ├── style.css                   # Styles
   ├── app.js                      # Logique JavaScript
-  ├── server.py                   # Serveur web Python
-  ├── README_WEBVIEW.md           # Documentation du visualiseur
-  ├── annonces.json               # Copie des annonces (auto-générée)
-  └── annonces_enriched.json      # Copie des annonces enrichies (auto-générée)
+  ├── server.py                   # Serveur web Python avec proxy
+  ├── annonces_cache.json         # Cache des données (auto-créé)
 ```
 
 ## Installation

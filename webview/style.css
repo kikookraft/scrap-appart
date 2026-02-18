@@ -64,13 +64,80 @@ header h1 {
     opacity: 0.5;
 }
 
+/* Onglets */
+.tabs {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    padding: 1rem 2rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    box-shadow: var(--shadow);
+}
+
+.tab-btn {
+    padding: 1rem 2.5rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 12px;
+    transition: all 0.3s;
+    position: relative;
+    backdrop-filter: blur(10px);
+}
+
+.tab-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.tab-btn.active {
+    background: white;
+    color: var(--primary-color);
+    border-color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: scale(1.05);
+}
+
+/* Contenu des onglets */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Carte */
+#map {
+    height: calc(100vh - 350px);
+    min-height: 500px;
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+
+#map-view {
+    max-width: 1400px;
+    margin: 2rem auto;
+    padding: 0 2rem;
+}
+
 .filters {
     max-width: 1400px;
     margin: 2rem auto;
     padding: 0 2rem;
+}
+
+.filters-row {
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
+    margin-bottom: 1rem;
 }
 
 .filters input,
@@ -84,7 +151,7 @@ header h1 {
     transition: all 0.3s;
 }
 
-.filters input {
+.filters-row input {
     flex: 1;
     min-width: 250px;
 }
@@ -97,6 +164,76 @@ header h1 {
 .filters select {
     cursor: pointer;
     background: white;
+}
+
+.toggle-btn {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.toggle-btn:hover {
+    background: var(--secondary-color);
+}
+
+.advanced-filters {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-group label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.range-inputs input {
+    flex: 1;
+    padding: 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+
+.range-inputs span {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.filter-group select {
+    width: 100%;
 }
 
 .filters button {
@@ -360,4 +497,144 @@ header h1 {
         margin: 1rem;
         max-width: calc(100% - 2rem);
     }
+}
+
+/* Marqueurs de carte personnalisés */
+.price-marker {
+    background: white;
+    border: 2px solid var(--primary-color);
+    border-radius: 20px;
+    padding: 0.4rem 0.8rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.price-marker:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: scale(1.1);
+    z-index: 1000 !important;
+}
+
+.price-marker.selected {
+    background: var(--primary-color);
+    color: white;
+    border-width: 3px;
+    transform: scale(1.15);
+}
+
+/* Popup de carte personnalisée */
+.leaflet-popup-content-wrapper {
+    border-radius: 12px;
+    box-shadow: var(--shadow-hover);
+}
+
+.leaflet-popup-content {
+    margin: 0;
+    min-width: 250px;
+}
+
+.map-popup-card {
+    padding: 0;
+}
+
+.map-popup-image {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 8px 8px 0 0;
+}
+
+.map-popup-content {
+    padding: 1rem;
+}
+
+.map-popup-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.map-popup-location {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.map-popup-info {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.map-popup-price {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+
+.map-popup-btn {
+    display: block;
+    width: 100%;
+    padding: 0.6rem;
+    background: var(--primary-color);
+    color: white;
+    text-align: center;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s;
+    border: none;
+    cursor: pointer;
+}
+
+.map-popup-btn:hover {
+    background: var(--secondary-color);
+}
+
+/* Clusters de marqueurs */
+.custom-cluster-icon {
+    background: transparent;
+    border: none;
+}
+
+.cluster-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: white;
+    font-size: 0.9rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border: 3px solid white;
+}
+
+.cluster-small {
+    background: var(--primary-color);
+}
+
+.cluster-medium {
+    background: #f59e0b;
+    width: 50px;
+    height: 50px;
+    font-size: 1rem;
+}
+
+.cluster-large {
+    background: #ef4444;
+    width: 60px;
+    height: 60px;
+    font-size: 1.1rem;
 }
