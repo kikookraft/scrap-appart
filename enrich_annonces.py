@@ -75,6 +75,7 @@ def extract_details(driver, url: str) -> Dict:
         'location_clean': None,
         'date_recuperation': datetime.now().isoformat(),
         'date_publication': None,
+        'description': None,
     }
     
     try:
@@ -84,8 +85,47 @@ def extract_details(driver, url: str) -> Dict:
         )
         time.sleep(3)
         
+        # Cliquer sur "Voir plus" pour déplier la description complète
+        try:
+            voir_plus_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, 
+                    "//button[contains(text(), 'Voir plus') or "
+                    "contains(text(), 'voir plus')]"))
+            )
+            driver.execute_script("arguments[0].scrollIntoView(true);",
+                                voir_plus_button)
+            time.sleep(0.5)
+            voir_plus_button.click()
+            time.sleep(1)
+        except Exception:
+            # Pas de bouton "Voir plus" ou déjà déplié
+            pass
+        
         page_source = driver.page_source
         doc = html.fromstring(page_source.encode('utf-8'))
+        
+        # Extraire la description complète
+        description_elements = doc.xpath(
+            "//h2[contains(text(), 'Description') or "
+            "contains(text(), 'description')]"
+            "/following-sibling::div//text()[normalize-space()]"
+        )
+        if not description_elements:
+            # Essayer un autre sélecteur
+            description_elements = doc.xpath(
+                "//div[contains(@class, 'description') or "
+                "contains(@class, 'Description')]//text()[normalize-space()]"
+            )
+        
+        if description_elements:
+            description_text = ' '.join([
+                str(t).strip() for t in description_elements if str(t).strip()
+            ])
+            # Nettoyer le texte
+            description_text = re.sub(r'\s+', ' ', description_text)
+            description_text = description_text.replace('Voir plus', '').strip()
+            details['description'] = description_text
+
         
         # Extraire les tags/caractéristiques
         carac_section = doc.xpath(
@@ -209,7 +249,9 @@ def main():
         quartier = details['quartier'] or 'N/A'
         n_images = len(details['images'])
         n_tags = len(details['tags'])
-        print(f"    ✅ {ville} | {quartier} | {n_images} img | {n_tags} tags")
+        desc_len = len(details['description']) if details['description'] else 0
+        print(f"    ✅ {ville} | {quartier} | {n_images} img | "
+              f"{n_tags} tags | desc: {desc_len} car.")
         
         if i < len(annonces):
             time.sleep(random.uniform(2, 4))
@@ -227,6 +269,7 @@ def main():
         'dpe': sum(1 for a in enriched if a['dpe']),
         'images': sum(1 for a in enriched if a['images']),
         'tags': sum(1 for a in enriched if a['tags']),
+        'description': sum(1 for a in enriched if a.get('description')),
     }
     
     print('\n📈 Statistiques:')
@@ -234,6 +277,7 @@ def main():
     print(f"   - DPE: {stats['dpe']}/{len(enriched)}")
     print(f"   - Images: {stats['images']}/{len(enriched)}")
     print(f"   - Tags: {stats['tags']}/{len(enriched)}")
+    print(f"   - Descriptions: {stats['description']}/{len(enriched)}")
     
     print('\n✅ Enrichissement terminé!\n')
 

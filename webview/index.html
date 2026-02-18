@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualiseur d'Annonces Immobilières</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>🏠 Annonces Immobilières</h1>
+        <div class="stats">
+            <span id="total-annonces">0 annonces</span>
+            <span class="separator">|</span>
+            <select id="data-source">
+                <option value="annonces.json">Annonces simples</option>
+                <option value="annonces_enriched.json">Annonces enrichies</option>
+            </select>
+        </div>
+    </header>
+
+    <div class="filters">
+        <input type="text" id="search" placeholder="🔍 Rechercher par titre, localisation...">
+        <select id="sort">
+            <option value="">Trier par...</option>
+            <option value="price-asc">Prix croissant</option>
+            <option value="price-desc">Prix décroissant</option>
+            <option value="surface-asc">Surface croissante</option>
+            <option value="surface-desc">Surface décroissante</option>
+        </select>
+        <button id="reset-filters">Réinitialiser</button>
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Chargement des annonces...</p>
+    </div>
+
+    <div id="error" class="error" style="display: none;">
+        <p>❌ Erreur lors du chargement des annonces</p>
+    </div>
+
+    <div id="annonces-container" class="annonces-grid">
+        <!-- Les annonces seront insérées ici par JavaScript -->
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

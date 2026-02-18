@@ -11,6 +11,14 @@ extract_cookies_selenium.py       # Extracteur de cookies (Selenium + Chrome)
 .cookies                          # Cookies au format JSON simple
 annonces.json                     # Résultats de scraping basiques
 annonces_enriched.json            # Résultats enrichis avec tous les détails
+webview/                          # Interface web de visualisation
+  ├── index.html                  # Page principale
+  ├── style.css                   # Styles
+  ├── app.js                      # Logique JavaScript
+  ├── server.py                   # Serveur web Python
+  ├── README_WEBVIEW.md           # Documentation du visualiseur
+  ├── annonces.json               # Copie des annonces (auto-générée)
+  └── annonces_enriched.json      # Copie des annonces enrichies (auto-générée)
 ```
 
 ## Installation
@@ -170,6 +178,13 @@ python3 scrap.py --max-pages 5 --output annonces.json
 
 # 3. Enrichir avec détails complets
 python3 enrich_annonces.py --input annonces.json --output annonces_enriched.json
+
+# 4. Copier les annonces dans le dossier webview
+cp annonces.json annonces_enriched.json webview/
+
+# 5. Lancer le visualiseur web
+cd webview && python3 server.py
+# Puis ouvrir http://localhost:8000 dans le navigateur
 ```
 
 **Performance:**
@@ -340,3 +355,30 @@ user-agent=Mozilla/5.0...
 - Pagination: ~27 annonces/page (testée jusqu'à 10 pages)
 - Photos non téléchargées (URLs disponibles dans HTML)
 - Limite SeLoger: ~5-10 pages max par recherche
+
+## Visualisation Web
+
+Un visualiseur web moderne est disponible dans le dossier `webview/`. Il permet de consulter les annonces récupérées avec une interface élégante et intuitive.
+
+**Fonctionnalités:**
+- 🔍 Recherche en temps réel (titre, localisation, prix)
+- 🔄 Tri par prix ou surface (croissant/décroissant)
+- 🖼️ Galerie d'images pour chaque annonce
+- 📱 Design responsive (mobile & desktop)
+- 🗺️ Affichage GPS, DPE, GES si disponibles
+- 🏷️ Tags visuels pour les caractéristiques
+
+**Lancement rapide:**
+```bash
+cd webview
+python3 server.py
+# Ouvrir http://localhost:8000 dans votre navigateur
+```
+
+**Mise à jour des données:**
+```bash
+# Après chaque scraping, copier les nouvelles annonces
+cp annonces.json annonces_enriched.json webview/
+```
+
+Pour plus de détails, consultez `webview/README_WEBVIEW.md`.
